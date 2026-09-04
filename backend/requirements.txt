@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+httpx>=0.26
+# optional -- only needed for the LLM classification path.
+# Absent, the system runs rules-only and says so.
+google-genai>=0.3.0

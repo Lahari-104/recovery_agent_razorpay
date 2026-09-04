@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recovery Console</title>
+<style>
+:root{
+  --ink:#12161F; --panel:#191E29; --panel-2:#212736; --raise:#28304180;
+  --line:#2C3446; --line-soft:#232A38;
+  --text:#E9E7E2; --dim:#98A0B2; --faint:#6B7386;
+  --brass:#D4A537; --brass-dim:#8A6C22;
+  --slate:#7095D6; --rose:#C4796F; --sage:#7FA98A;
+  --r:10px;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--text);font:400 14px/1.55 var(--sans);
+  padding:0 0 80px;min-height:100vh}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px;border-radius:4px}
+
+/* ---------- header ---------- */
+header{border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40;
+  background:color-mix(in srgb,var(--ink) 94%,transparent);backdrop-filter:blur(8px)}
+.hbar{display:flex;align-items:center;gap:18px;padding:14px 0;flex-wrap:wrap}
+.brand{font-weight:500;font-size:15px;letter-spacing:-.01em}
+.brand span{color:var(--brass)}
+.tagline{color:var(--faint);font-size:12px;border-left:1px solid var(--line);padding-left:18px}
+.hspace{flex:1}
+.pill{font-family:var(--mono);font-size:11px;padding:4px 9px;border:1px solid var(--line);
+  border-radius:99px;color:var(--dim);white-space:nowrap}
+.pill.warn{color:var(--brass);border-color:var(--brass-dim)}
+.pill.bad{color:var(--rose);border-color:#5A3833}
+.switch{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);cursor:pointer}
+.switch input{appearance:none;width:30px;height:17px;border-radius:99px;background:var(--line);
+  position:relative;cursor:pointer;transition:background .15s;flex:none}
+.switch input:checked{background:var(--rose)}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;
+  border-radius:50%;background:var(--text);transition:transform .15s}
+.switch input:checked::after{transform:translateX(13px)}
+
+/* ---------- banner ---------- */
+.banner{display:flex;gap:10px;align-items:flex-start;margin-top:16px;padding:11px 14px;
+  border:1px solid var(--brass-dim);border-radius:var(--r);background:#2A22104D;font-size:13px}
+.banner b{color:var(--brass);font-weight:500}
+
+/* ---------- hero band ---------- */
+.hero{margin-top:22px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--panel);overflow:hidden}
+.hero-top{padding:20px 22px 4px;display:flex;justify-content:space-between;
+  align-items:baseline;gap:16px;flex-wrap:wrap}
+.eyebrow{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.atrisk{font-size:13px;color:var(--dim)}
+.atrisk b{color:var(--text);font-weight:500}
+.band{margin:16px 22px 0;position:relative;height:60px;border-radius:6px;
+  background:var(--panel-2);overflow:hidden;border:1px solid var(--line-soft)}
+.fill{position:absolute;top:0;bottom:0;left:0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.fill.agent{background:linear-gradient(180deg,#D4A53733,#D4A53718);
+  border-right:2px solid var(--brass)}
+.fill.naive{background:#7A839426;border-right:2px solid var(--faint)}
+.ceil{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--slate);
+  transition:left .6s cubic-bezier(.2,.8,.2,1)}
+.ceil::after{content:"ceiling";position:absolute;top:-16px;left:6px;font-size:10px;
+  color:var(--slate);white-space:nowrap;font-family:var(--mono)}
+.bandkey{display:flex;gap:20px;padding:12px 22px 20px;flex-wrap:wrap;font-size:12px}
+.key{display:flex;align-items:center;gap:7px;color:var(--dim)}
+.dot{width:9px;height:3px;border-radius:2px;flex:none}
+.key b{color:var(--text);font-weight:500;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- stat strip ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  border-top:1px solid var(--line)}
+.stat{padding:16px 22px;border-right:1px solid var(--line-soft)}
+.stat:last-child{border-right:none}
+.stat .lbl{font-size:11px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+.stat .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:23px;
+  margin-top:5px;letter-spacing:-.03em}
+.stat .sub{font-size:11.5px;color:var(--dim);margin-top:3px}
+.up{color:var(--brass)} .down{color:var(--rose)} .neutral{color:var(--text)}
+
+/* ---------- tabs ---------- */
+nav.tabs{display:flex;gap:2px;margin:26px 0 0;border-bottom:1px solid var(--line);
+  overflow-x:auto;scrollbar-width:none}
+nav.tabs::-webkit-scrollbar{display:none}
+.tab{padding:10px 15px;font-size:13px;color:var(--dim);border-bottom:2px solid transparent;
+  white-space:nowrap;transition:color .12s}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--brass);border-bottom-color:var(--brass)}
+.tab .ct{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:5px}
+
+/* ---------- panels ---------- */
+.pane{display:none;padding-top:22px}
+.pane.on{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.card>h3{font-size:13px;font-weight:500;padding:13px 16px;border-bottom:1px solid var(--line-soft);
+  color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card>h3 em{font-style:normal;font-size:11px;color:var(--faint);font-family:var(--mono)}
+.cbody{padding:16px}
+.note{font-size:12.5px;color:var(--dim);line-height:1.6}
+
+/* ---------- bars ---------- */
+.rows{display:flex;flex-direction:column;gap:13px}
+.row{display:grid;grid-template-columns:1fr auto;gap:4px}
+.rlbl{font-size:12.5px;display:flex;justify-content:space-between;gap:10px;grid-column:1/-1}
+.rlbl span:last-child{font-family:var(--mono);color:var(--dim);font-size:11.5px}
+.track{grid-column:1/-1;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden}
+.trackfill{height:100%;border-radius:3px;transition:width .5s}
+
+/* ---------- table ---------- */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-weight:400;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faint);padding:9px 12px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+.tbl tbody tr{cursor:pointer;transition:background .1s}
+.tbl tbody tr:hover{background:var(--raise)}
+.tbl .r{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.scroll{max-height:560px;overflow-y:auto}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+.tag{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 7px;
+  border-radius:4px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.tag.ok{color:var(--brass);border-color:var(--brass-dim);background:#D4A5371A}
+.tag.no{color:var(--faint)}
+.tag.esc{color:var(--slate);border-color:#3C4E70}
+.tag.blk{color:var(--rose);border-color:#5A3833}
+.mono-sm{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+/* ---------- sliders ---------- */
+.ctrl{margin-bottom:17px}
+.ctrl label{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:7px;
+  align-items:baseline;gap:10px}
+.ctrl label b{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--brass);
+  font-weight:400;font-size:12.5px}
+.ctrl input[type=range]{width:100%;appearance:none;height:3px;background:var(--line);
+  border-radius:2px;cursor:pointer}
+.ctrl input[type=range]::-webkit-slider-thumb{appearance:none;width:15px;height:15px;
+  border-radius:50%;background:var(--brass);cursor:pointer;border:2px solid var(--ink)}
+.ctrl input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;
+  background:var(--brass);cursor:pointer;border:2px solid var(--ink)}
+.ctrl small{color:var(--faint);font-size:11.5px;display:block;margin-top:5px;line-height:1.5}
+.btn{padding:8px 14px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;
+  color:var(--dim);transition:.12s}
+.btn:hover{border-color:var(--brass-dim);color:var(--brass)}
+.btn.solid{background:var(--brass);color:#14100A;border-color:var(--brass);font-weight:500}
+.btn.solid:hover{filter:brightness(1.08);color:#14100A}
+.btnrow{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+
+.delta{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel-2)}
+.delta .big{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;
+  letter-spacing:-.03em}
+
+/* ---------- audit stream ---------- */
+.stream{font-family:var(--mono);font-size:11.5px;line-height:1.75}
+.ev{display:grid;grid-template-columns:76px 1fr;gap:12px;padding:6px 0;
+  border-bottom:1px solid var(--line-soft)}
+.ev .k{font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding-top:2px}
+.k.detected{color:var(--faint)} .k.classified{color:var(--slate)}
+.k.decided{color:var(--text)} .k.executed{color:var(--brass)}
+.k.refused{color:var(--rose)} .k.closed{color:var(--faint)}
+.ev .m{color:var(--dim);word-break:break-word}
+
+/* ---------- drawer ---------- */
+.scrim{position:fixed;inset:0;background:#0A0D14CC;z-index:60;display:none}
+.scrim.on{display:block}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(660px,100%);background:var(--panel);
+  border-left:1px solid var(--line);z-index:61;transform:translateX(100%);
+  transition:transform .26s cubic-bezier(.2,.8,.2,1);overflow-y:auto;display:flex;
+  flex-direction:column}
+.drawer.on{transform:none}
+.dhead{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:14px;position:sticky;top:0;
+  background:var(--panel);z-index:2}
+.dbody{padding:20px 22px 60px}
+.sect{margin-bottom:24px}
+.sect h4{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);
+  margin-bottom:10px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px}
+.kv dt{color:var(--faint)}
+.kv dd{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.step{border-left:2px solid var(--line);padding:0 0 16px 15px;position:relative}
+.step::before{content:"";position:absolute;left:-5px;top:5px;width:8px;height:8px;
+  border-radius:50%;background:var(--line)}
+.step.hit::before{background:var(--brass)}
+.step.hit{border-left-color:var(--brass-dim)}
+.step .st{font-size:12.5px;font-weight:500}
+.step .sr{font-size:12px;color:var(--dim);margin-top:3px;line-height:1.55}
+.rulechip{font-family:var(--mono);font-size:10px;color:var(--brass);border:1px solid var(--brass-dim);
+  padding:1px 6px;border-radius:4px;margin-right:7px}
+.empty{padding:36px 16px;text-align:center;color:var(--faint);font-size:13px}
+.err{color:var(--rose);font-size:12.5px;padding:10px 0}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);
+  border-top-color:var(--brass);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hbar">
+    <div class="brand">Recovery <span>Console</span></div>
+    <div class="tagline">Failed payments, diagnosed and chased under hard limits</div>
+    <div class="hspace"></div>
+    <span class="pill" id="pLlm">llm —</span>
+    <span class="pill" id="pPolicy">policy —</span>
+    <label class="switch" title="Halt every money action immediately">
+      <input type="checkbox" id="kill"><span>Kill switch</span>
+    </label>
+    <label class="switch" title="Run the full pipeline, perform nothing">
+      <input type="checkbox" id="dry"><span>Dry run</span>
+    </label>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="banner" id="degraded" style="display:none">
+    <b>The language model is configured but unreachable.</b>
+    <span id="degradedTxt">Classification has fallen back to the deterministic rules and
+    keyword path. Recovery is continuing at full rate &mdash; nothing is queued, delayed,
+    or lost. This is the designed failure mode, not an outage.</span>
+  </div>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="hero-top">
+      <div>
+        <div class="eyebrow">Money recovered across the batch</div>
+      </div>
+      <div class="atrisk">At risk <b class="num" id="hAtRisk">—</b>
+        across <b class="num" id="hCases">—</b> failed payments</div>
+    </div>
+
+    <div class="band">
+      <div class="fill naive" id="bNaive" style="width:0"></div>
+      <div class="fill agent" id="bAgent" style="width:0"></div>
+      <div class="ceil" id="bCeil" style="left:0"></div>
+    </div>
+
+    <div class="bandkey">
+      <div class="key"><span class="dot" style="background:var(--faint)"></span>
+        Blind retry <b id="kNaive">—</b></div>
+      <div class="key"><span class="dot" style="background:var(--brass)"></span>
+        This agent <b id="kAgent">—</b></div>
+      <div class="key"><span class="dot" style="background:var(--slate)"></span>
+        Perfect play <b id="kOracle">—</b></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="lbl">Net recovered</div>
+        <div class="val up" id="sNet">—</div>
+        <div class="sub" id="sNetSub">after intervention cost</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Beats blind retry by</div>
+        <div class="val up" id="sUplift">—</div>
+        <div class="sub" id="sUpliftSub">same batch, same luck</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Of the ceiling</div>
+        <div class="val neutral" id="sCeil">—</div>
+        <div class="sub" id="sCeilSub">perfect play would get more</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Spent chasing</div>
+        <div class="val neutral" id="sSpend">—</div>
+        <div class="sub" id="sSpendSub">cost per recovery</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Actions refused</div>
+        <div class="val" style="color:var(--rose)" id="sRef">—</div>
+        <div class="sub">blocked by a hard limit</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TABS ============ -->
+  <nav class="tabs" role="tablist">
+    <button class="tab on" data-p="ov" role="tab">Recovery</button>
+    <button class="tab" data-p="sim" role="tab">What-if</button>
+    <button class="tab" data-p="cases" role="tab">Cases<span class="ct" id="tcCases"></span></button>
+    <button class="tab" data-p="exc" role="tab">Not recovered<span class="ct" id="tcExc"></span></button>
+    <button class="tab" data-p="ref" role="tab">Refusals<span class="ct" id="tcRef"></span></button>
+    <button class="tab" data-p="aud" role="tab">Audit<span class="ct" id="tcAud"></span></button>
+    <button class="tab" data-p="live" role="tab">Live webhook</button>
+  </nav>
+
+  <!-- ---- Recovery ---- -->
+  <section class="pane on" id="p-ov">
+    <div class="grid2">
+      <div class="card">
+        <h3>Where the money was <em>by diagnosed cause</em></h3>
+        <div class="cbody"><div class="rows" id="byCause"></div></div>
+      </div>
+      <div class="card">
+        <h3>What actually worked <em>by intervention</em></h3>
+        <div class="cbody"><div class="rows" id="byAction"></div></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h3>Rails currently degraded <em>checked before every retry</em></h3>
+        <div class="cbody"><div id="downtime" class="note">Loading…</div></div>
+      </div>
+      <div class="card">
+        <h3>How the batch was run</h3>
+        <div class="cbody note" id="runinfo"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- What-if ---- -->
+  <section class="pane" id="p-sim">
+    <div class="grid2">
+      <div class="card">
+        <h3>Move a limit, re-run the batch</h3>
+        <div class="cbody">
+          <div class="ctrl">
+            <label>Attempts allowed per payment <b id="vAtt">3</b></label>
+            <input type="range" id="rAtt" min="1" max="8" value="3">
+            <small>More attempts recover more, until the cost and the customer's patience run out.</small>
+          </div>
+          <div class="ctrl">
+            <label>Cooldown between attempts <b id="vCool">45 min</b></label>
+            <input type="range" id="rCool" min="0" max="240" step="15" value="45">
+            <small>Zero cooldown is what a blind retry cron does. Watch what it costs.</small>
+          </div>
+          <div class="ctrl">
+            <label>Wait before retrying a low balance <b id="vIf">14 h</b></label>
+            <input type="range" id="rIf" min="0" max="36" value="14">
+            <small>Accounts get funded overnight. Retrying at minute one mostly wastes an attempt.</small>
+          </div>
+          <div class="ctrl">
+            <label>Most we'll spend chasing a payment <b id="vSpend">8%</b></label>
+            <input type="range" id="rSpend" min="1" max="40" value="8">
+            <small>Of the payment's own value. This is what stops the agent chasing a ₹40 order with a ₹40 phone call.</small>
+          </div>
+          <div class="ctrl">
+            <label>Escalate to a human below <b id="vConf">55%</b></label>
+            <input type="range" id="rConf" min="0" max="95" step="5" value="55">
+            <small>When the diagnosis is shaky, a person decides instead of the agent guessing.</small>
+          </div>
+          <div class="btnrow">
+            <button class="btn solid" id="runSim">Run with these limits</button>
+            <button class="btn" id="resetSim">Reset</button>
+            <span id="simSpin"></span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Result <em>against the current settings</em></h3>
+        <div class="cbody">
+          <div class="delta">
+            <div class="lbl eyebrow">Change in net recovered</div>
+            <div class="big" id="dNet">—</div>
+            <div class="note" id="dNote" style="margin-top:6px">
+              Move a slider and run to compare.
+            </div>
+          </div>
+          <div style="margin-top:18px" id="simTable"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- Cases ---- -->
+  <section class="pane" id="p-cases">
+    <div class="card">
+      <h3>Every case, largest first <em>click any row for the full trail</em></h3>
+      <div class="scroll">
+        <table class="tbl"><thead><tr>
+          <th>Payment</th><th>Diagnosis</th><th>Rule</th><th>Outcome</th>
+          <th class="r">Amount</th><th class="r">Spent</th><th class="r">Tries</th>
+        </tr></thead><tbody id="tCases"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- Exceptions ---- -->
+  <section class="pane" id="p-exc">
+    <div class="card">
+      <h3>What we did not recover <em>and why</em></h3>
+      <div class="cbody note" id="excNote"></div>
+      <div class="scroll">
+        <table class="tbl"><thead><tr>
+          <th>Payment</th><th>Diagnosis</th><th>Ended as</th><th>Reason</th>
+          <th class="r">Amount</th><th>Truth</th>
+        </tr></thead><tbody id="tExc"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- Refusals ---- -->
+  <section class="pane" id="p-ref">
+    <div class="card" style="margin-bottom:18px">
+      <h3>Limits that fired</h3>
+      <div class="cbody">
+        <p class="note" style="margin-bottom:14px">Every time the agent wanted to act and a
+        limit said no. These are recorded as events, not silent skips — an agent that
+        declines to act is doing its job.</p>
+        <div class="rows" id="byGuard"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Refusal log</h3>
+      <div class="scroll"><div class="cbody stream" id="refLog"></div></div>
+    </div>
+  </section>
+
+  <!-- ---- Audit ---- -->
+  <section class="pane" id="p-aud">
+    <div class="card">
+      <h3>Decision trail <em id="audDigest"></em></h3>
+      <div class="cbody" style="padding-bottom:0">
+        <div class="btnrow" style="margin-bottom:14px">
+          <button class="btn" data-ev="">Everything</button>
+          <button class="btn" data-ev="classified">Diagnosed</button>
+          <button class="btn" data-ev="decided">Decided</button>
+          <button class="btn" data-ev="executed">Acted</button>
+          <button class="btn" data-ev="refused">Refused</button>
+          <button class="btn" data-ev="closed">Closed</button>
+        </div>
+      </div>
+      <div class="scroll"><div class="cbody stream" id="audLog"></div></div>
+    </div>
+  </section>
+
+  <!-- ---- Live ---- -->
+  <section class="pane" id="p-live">
+    <div class="grid2">
+      <div class="card">
+        <h3>Send a failure through the real webhook path</h3>
+        <div class="cbody">
+          <p class="note" style="margin-bottom:15px">This posts a <span class="tag">payment.failed</span>
+          event into the same handler Razorpay calls — signature check, duplicate
+          suppression, normalisation, then the agent. Same code, no shortcut.</p>
+          <div class="btnrow" style="margin-bottom:12px">
+            <button class="btn" data-inj="payment_failed_insufficient_funds">Low balance</button>
+            <button class="btn" data-inj="payment_upi_bank_down">Bank down</button>
+            <button class="btn" data-inj="payment_timeout">Timed out</button>
+            <button class="btn" data-inj="upi_collect_expired">Customer walked</button>
+            <button class="btn" data-inj="card_blocked">Card blocked</button>
+            <button class="btn" data-inj="payment_blocked_risk">Risk block</button>
+          </div>
+          <div id="liveOut" class="empty">Pick a failure above to watch the agent reason through it.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Live cases</h3>
+        <div class="scroll"><div class="cbody" id="liveCases">
+          <div class="empty">Nothing yet.</div></div></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Case detail">
+  <div class="dhead">
+    <div>
+      <div class="eyebrow">Case</div>
+      <div class="num" id="dTitle" style="font-size:17px;margin-top:3px">—</div>
+    </div>
+    <div class="btnrow">
+      <button class="btn" id="replayBtn">Replay</button>
+      <button class="btn" id="closeD">Close</button>
+    </div>
+  </div>
+  <div class="dbody" id="dBody"></div>
+</aside>
+
+<script>
+const API = "";
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const money = n => "₹" + Math.round(n).toLocaleString("en-IN");
+const pct = n => (n * 100).toFixed(1) + "%";
+let SUM = null, CASES = [];
+
+async function get(p){ const r = await fetch(API + p); if(!r.ok) throw new Error(p); return r.json(); }
+async function post(p, b){
+  const r = await fetch(API + p, {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(b||{})});
+  if(!r.ok) throw new Error(p); return r.json();
+}
+
+/* ---------- tabs ---------- */
+$$(".tab").forEach(t => t.onclick = () => {
+  $$(".tab").forEach(x => x.classList.toggle("on", x === t));
+  $$(".pane").forEach(p => p.classList.toggle("on", p.id === "p-" + t.dataset.p));
+  const l = {cases:loadCases, exc:loadExc, ref:loadRef, aud:()=>loadAud(""), live:loadLive}[t.dataset.p];
+  if(l) l();
+});
+
+/* ---------- hero ---------- */
+function paintHero(d){
+  SUM = d;
+  const a = d.agent, n = d.naive, o = d.oracle;
+  const risk = a.at_risk_rupees;
+  $("#hAtRisk").textContent = money(risk);
+  $("#hCases").textContent = a.cases.toLocaleString("en-IN");
+
+  const w = v => Math.min(100, v / risk * 100) + "%";
+  $("#bNaive").style.width = w(n.recovered_rupees);
+  $("#bAgent").style.width = w(a.recovered_rupees);
+  $("#bCeil").style.left = w(o.recovered_rupees);
+
+  $("#kNaive").textContent = money(n.recovered_rupees) + "  " + pct(n.recovery_rate);
+  $("#kAgent").textContent = money(a.recovered_rupees) + "  " + pct(a.recovery_rate);
+  $("#kOracle").textContent = money(o.recovered_rupees) + "  " + pct(o.recovery_rate);
+
+  $("#sNet").textContent = money(a.net_rupees);
+  $("#sNetSub").textContent = money(a.recovered_rupees) + " recovered, " +
+    money(a.spend_rupees) + " spent";
+
+  const up = d.uplift_net_rupees;
+  $("#sUplift").textContent = (up >= 0 ? "+" : "") + money(up);
+  $("#sUplift").className = "val " + (up >= 0 ? "up" : "down");
+  $("#sUpliftSub").textContent = d.uplift_pct + "% more, same batch";
+
+  $("#sCeil").textContent = d.capture_of_ceiling_pct + "%";
+  $("#sCeilSub").textContent = money(o.net_rupees - a.net_rupees) + " still on the table";
+
+  $("#sSpend").textContent = money(a.spend_rupees);
+  $("#sSpendSub").textContent = money(a.cost_per_recovery_paise / 100) + " per recovery";
+
+  $("#sRef").textContent = a.refusals.toLocaleString("en-IN");
+  $("#tcCases").textContent = a.cases;
+  $("#tcExc").textContent = d.exception_count;
+  $("#tcRef").textContent = a.refusals;
+
+  $("#runinfo").innerHTML =
+    `<dl class="kv">
+      <dt>Batch</dt><dd>${a.cases} failures, seed ${d.seed ?? "—"}</dd>
+      <dt>Runtime</dt><dd>${d.runtime_ms ?? "—"} ms</dd>
+      <dt>Diagnosis</dt><dd>${d.classifier_stats ?
+        Object.entries(d.classifier_stats).filter(([,v])=>v).map(([k,v])=>k+" "+v).join(", ") : "—"}</dd>
+      <dt>Recovered</dt><dd>${a.recovered_count} of ${a.cases} payments</dd>
+      <dt>Escalated</dt><dd>${a.escalated_count} to a person</dd>
+      <dt>Attempts</dt><dd>${a.attempts_total} total, vs ${n.attempts_total} blind</dd>
+    </dl>
+    <p style="margin-top:12px">All three policies run over the identical batch and draw from the
+    same pre-generated luck, so a difference in recovery comes from the decisions, never the dice.</p>`;
+}
+
+function bars(el, rows, label, val, sub, color){
+  const max = Math.max(...rows.map(val), 1);
+  el.innerHTML = rows.map(r => `
+    <div class="row">
+      <div class="rlbl"><span>${label(r)}</span><span>${sub(r)}</span></div>
+      <div class="track"><div class="trackfill" style="width:${val(r)/max*100}%;
+        background:${color}"></div></div>
+    </div>`).join("") || `<div class="empty">Nothing here.</div>`;
+}
+
+/* ---------- loaders ---------- */
+async function loadAll(){
+  const h = await get("/api/health");
+  $("#pLlm").textContent = "llm " + h.llm;
+  $("#pLlm").className = "pill" + (h.llm_degraded ? " warn" : "");
+  $("#pPolicy").textContent = h.policy_version + " · " + h.config_hash;
+  $("#kill").checked = h.kill_switch; $("#dry").checked = h.dry_run;
+  if(h.llm_degraded) $("#degraded").style.display = "flex";
+
+  paintHero(await get("/api/eval/summary"));
+
+  const b = await get("/api/eval/breakdown");
+  bars($("#byCause"), b.by_cause,
+    r => r.key.replace(/_/g," ") + ` · ${r.count} cases`,
+    r => r.recovered_paise,
+    r => money(r.recovered_rupees) + " of " + money(r.at_risk_rupees) + "  " + pct(r.rate||0),
+    "var(--brass)");
+  bars($("#byAction"), b.by_action,
+    r => r.key.replace(/_/g," "),
+    r => r.used,
+    r => `${r.used} used · ${pct(r.success_rate||0)} worked`,
+    "var(--slate)");
+
+  const d = await get("/api/downtime");
+  $("#downtime").innerHTML = d.degraded.length
+    ? d.degraded.slice(0,9).map(x =>
+        `<div style="display:flex;justify-content:space-between;padding:5px 0;
+          border-bottom:1px solid var(--line-soft)">
+          <span>${x.bank} <span class="tag">${x.method}</span></span>
+          <span class="mono-sm">${x.severity} · ~${x.minutes_remaining} min left</span></div>`).join("")
+      + `<p class="note" style="margin-top:10px">Source: ${d.source}. The agent checks this
+         before scheduling any retry — retrying into a dead rail burns an attempt for nothing.</p>`
+    : "<p class='note'>All rails healthy right now.</p>";
+}
+
+async function loadCases(){
+  const d = await get("/api/eval/cases?limit=120");
+  CASES = d.cases;
+  $("#tCases").innerHTML = CASES.map(c => `
+    <tr data-id="${c.case_id}">
+      <td><span class="num" style="font-size:11.5px">${c.case_id}</span><br>
+        <span class="mono-sm">${c.method} · ${c.bank}</span></td>
+      <td>${(c.subcause||"—").replace(/_/g," ")}<br>
+        <span class="mono-sm">${pct(c.confidence||0)} sure</span></td>
+      <td><span class="tag">${c.rule||"—"}</span></td>
+      <td>${stateTag(c.state)}</td>
+      <td class="r">${money(c.amount_rupees)}</td>
+      <td class="r" style="color:var(--dim)">₹${c.spend_rupees.toFixed(2)}</td>
+      <td class="r">${c.attempts}</td>
+    </tr>`).join("");
+  $$("#tCases tr").forEach(r => r.onclick = () => openCase(r.dataset.id));
+}
+
+const stateTag = s => ({
+  recovered:'<span class="tag ok">recovered</span>',
+  abandoned:'<span class="tag no">stopped</span>',
+  escalated:'<span class="tag esc">to a person</span>',
+  blocked:'<span class="tag blk">blocked</span>',
+}[s] || `<span class="tag">${s}</span>`);
+
+async function loadExc(){
+  const d = await get("/api/eval/exceptions?limit=120");
+  $("#excNote").innerHTML = `Of ${d.total} unrecovered payments, <b>${d.genuinely_unrecoverable}</b>
+    could never have been recovered by anything — dead cards, frozen accounts, customers
+    who were never coming back. The other <b>${d.missed_but_recoverable}</b> were winnable
+    and we missed them. That second number is the honest one.`;
+  $("#tExc").innerHTML = d.exceptions.map(e => `
+    <tr>
+      <td><span class="num" style="font-size:11.5px">${e.case_id}</span></td>
+      <td>${e.subcause.replace(/_/g," ")}</td>
+      <td>${stateTag(e.final_state)}</td>
+      <td style="color:var(--dim);max-width:290px">${e.reason}</td>
+      <td class="r">${money(e.amount_rupees)}</td>
+      <td><span class="tag ${e.truth_profile==="unrecoverable"?"no":"blk"}">${
+        e.truth_profile==="unrecoverable"?"never winnable":"was winnable"}</span></td>
+    </tr>`).join("");
+}
+
+async function loadRef(){
+  const d = await get("/api/refusals");
+  const rows = Object.entries(d.by_guard).map(([k,v]) => ({k,v}));
+  bars($("#byGuard"), rows, r => guardName(r.k), r => r.v,
+    r => r.v + " times", "var(--rose)");
+  $("#refLog").innerHTML = d.refusals.slice(0,120).map(e => `
+    <div class="ev"><div class="k refused">${e.detail.guard||"blocked"}</div>
+    <div class="m"><span class="num">${e.case_id}</span> — ${e.summary}</div></div>`).join("")
+    || `<div class="empty">No limit has fired yet.</div>`;
+}
+
+const guardName = g => ({
+  "CAP-COOLDOWN":"Too soon after the last try",
+  "COMP-QUIET":"Quiet hours — no messaging at night",
+  "CAP-ATTEMPTS":"Out of attempts for this payment",
+  "CAP-CUSTOMER":"This customer has been contacted enough",
+  "CAP-SPEND":"Would cost more than it's worth",
+  "COMP-OPTOUT":"Customer opted out",
+  "INV-NDC":"Already paid — refusing to charge twice",
+  "INV-NEVERRETRY":"Dead card — retry structurally forbidden",
+  "KILL":"Kill switch engaged",
+}[g] || g);
+
+async function loadAud(ev){
+  const d = await get("/api/audit/tail?n=200" + (ev ? "&event=" + ev : ""));
+  $("#audDigest").textContent = "digest " + (d.digest||"");
+  $("#tcAud").textContent = d.total;
+  $("#audLog").innerHTML = d.entries.map(e => `
+    <div class="ev"><div class="k ${e.event}">${e.event}</div>
+    <div class="m"><span class="num">${e.case_id}</span> — ${e.summary}</div></div>`).join("")
+    || `<div class="empty">Nothing logged.</div>`;
+}
+$$("[data-ev]").forEach(b => b.onclick = () => loadAud(b.dataset.ev));
+
+/* ---------- drawer ---------- */
+let OPEN = null;
+async function openCase(id){
+  OPEN = id;
+  $("#scrim").classList.add("on"); $("#drawer").classList.add("on");
+  $("#dTitle").textContent = id;
+  $("#dBody").innerHTML = `<div class="empty"><span class="spin"></span></div>`;
+  try{
+    const c = await get("/api/eval/case/" + id);
+    $("#dBody").innerHTML = `
+      <div class="sect">
+        <h4>The payment</h4>
+        <dl class="kv">
+          <dt>Amount</dt><dd>${money(c.amount_rupees)}</dd>
+          <dt>Method</dt><dd>${c.method} via ${c.bank}</dd>
+          <dt>Gateway said</dt><dd>${c.error_code}</dd>
+          <dt>In words</dt><dd style="font-family:var(--sans)">${c.payment.error_description}</dd>
+          <dt>Failed at</dt><dd>${new Date(c.failed_at).toLocaleString("en-IN")}</dd>
+          <dt>Customer</dt><dd>${c.customer.lifetime_payments} paid /
+            ${c.customer.lifetime_failures} failed${c.customer.opted_out?" · opted out":""}</dd>
+        </dl>
+      </div>
+      <div class="sect">
+        <h4>Diagnosis</h4>
+        <div class="note"><b style="color:var(--text)">${c.classification.cause.replace(/_/g," ")}
+          — ${c.classification.subcause.replace(/_/g," ")}</b>
+          at ${pct(c.classification.confidence)} confidence
+          <span class="tag" style="margin-left:6px">${c.classification.source}</span>
+          <div style="margin-top:6px">${c.classification.reason}</div></div>
+      </div>
+      <div class="sect">
+        <h4>What it decided, and why</h4>
+        ${c.decisions.map((d,i) => {
+          const a = c.attempts_detail[i];
+          return `<div class="step ${a&&a.succeeded?"hit":""}">
+            <div class="st"><span class="rulechip">${d.rule}</span>${d.action.replace(/_/g," ")}${
+              d.alt_method?" via "+d.alt_method:""}</div>
+            <div class="sr">${d.reason}</div>
+            ${a?`<div class="sr" style="color:var(--faint);margin-top:4px">
+              ${new Date(a.at).toLocaleString("en-IN")} · ${
+              a.succeeded?`<span style="color:var(--brass)">recovered ${money(c.amount_rupees)}</span>`
+              :"no recovery"} · cost ₹${a.cost_rupees.toFixed(2)}</div>`:""}
+          </div>`;}).join("")}
+      </div>
+      <div class="sect">
+        <h4>Outcome</h4>
+        <div class="note">${stateTag(c.state)} &nbsp; ${c.closed_reason}</div>
+      </div>
+      <div class="sect">
+        <h4>Raw trail</h4>
+        <div class="stream">${c.audit.map(e =>
+          `<div class="ev"><div class="k ${e.event}">${e.event}</div>
+           <div class="m">${e.summary}</div></div>`).join("")}</div>
+      </div>
+      <div class="sect" id="replayOut"></div>`;
+  }catch(e){ $("#dBody").innerHTML = `<div class="err">Couldn't load this case. ${e.message}</div>`; }
+}
+const shut = () => { $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); };
+$("#scrim").onclick = shut; $("#closeD").onclick = shut;
+document.addEventListener("keydown", e => e.key === "Escape" && shut());
+
+$("#replayBtn").onclick = async () => {
+  if(!OPEN) return;
+  const out = $("#replayOut");
+  out.innerHTML = `<h4>Replay</h4><div class="note"><span class="spin"></span> Recomputing…</div>`;
+  try{
+    const r = await get("/api/audit/replay/" + OPEN);
+    out.innerHTML = `<h4>Replay</h4>
+      <div class="note">${r.identical
+        ? `<b style="color:var(--brass)">Identical.</b> Recomputed from scratch, the agent
+           reached the same outcome by the same rules — ${r.replayed.rules.join(" → ")}.
+           Nothing here depends on a coin flip.`
+        : `<b style="color:var(--rose)">Diverged.</b> ${JSON.stringify(r.checks)}`}</div>`;
+  }catch(e){ out.innerHTML = `<div class="err">Replay failed: ${e.message}</div>`; }
+};
+
+/* ---------- simulator ---------- */
+const S = {rAtt:["vAtt",v=>v], rCool:["vCool",v=>v+" min"], rIf:["vIf",v=>v+" h"],
+           rSpend:["vSpend",v=>v+"%"], rConf:["vConf",v=>v+"%"]};
+Object.entries(S).forEach(([id,[lbl,fmt]]) => {
+  const el = $("#"+id);
+  el.oninput = () => $("#"+lbl).textContent = fmt(el.value);
+});
+
+$("#runSim").onclick = async () => {
+  $("#simSpin").innerHTML = '<span class="spin"></span>';
+  try{
+    const r = await post("/api/simulate", {
+      max_attempts_per_payment: +$("#rAtt").value,
+      min_cooldown_minutes: +$("#rCool").value,
+      insufficient_funds_delay_hours: +$("#rIf").value,
+      max_spend_ratio: +$("#rSpend").value / 100,
+      escalate_below_confidence: +$("#rConf").value / 100,
+    });
+    const d = r.delta_net_rupees;
+    $("#dNet").textContent = (d >= 0 ? "+" : "") + money(d);
+    $("#dNet").className = "big " + (d >= 0 ? "up" : "down");
+    $("#dNote").innerHTML = d >= 0
+      ? `These limits recover ${money(d)} more than the current settings — but check the
+         attempt count and spend before adopting them.`
+      : `These limits give up ${money(-d)}. Sometimes that is the right trade for fewer
+         messages to customers.`;
+    const a = r.result, b = r.baseline;
+    $("#simTable").innerHTML = `<table class="tbl">
+      <thead><tr><th></th><th class="r">Now</th><th class="r">What-if</th></tr></thead><tbody>
+      ${[["Net recovered", money(b.net_rupees), money(a.net_rupees)],
+         ["Recovery rate", pct(b.recovery_rate), pct(a.recovery_rate)],
+         ["Payments saved", b.recovered_count, a.recovered_count],
+         ["Attempts made", b.attempts_total, a.attempts_total],
+         ["Spent", money(b.spend_rupees), money(a.spend_rupees)],
+         ["Sent to a person", b.escalated_count, a.escalated_count],
+        ].map(([k,x,y]) => `<tr style="cursor:default"><td>${k}</td>
+          <td class="r" style="color:var(--dim)">${x}</td><td class="r">${y}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="note" style="margin-top:10px">Ran in ${r.runtime_ms} ms over the same batch.</p>`;
+  }catch(e){ $("#dNote").innerHTML = `<span class="err">Couldn't run that. ${e.message}</span>`; }
+  $("#simSpin").innerHTML = "";
+};
+$("#resetSim").onclick = () => {
+  const d = {rAtt:3, rCool:45, rIf:14, rSpend:8, rConf:55};
+  Object.entries(d).forEach(([k,v]) => { $("#"+k).value = v; $("#"+k).oninput(); });
+};
+
+/* ---------- switches ---------- */
+["kill","dry"].forEach(id => $("#"+id).onchange = async e => {
+  await post("/api/config", id === "kill"
+    ? {kill_switch: e.target.checked} : {dry_run: e.target.checked});
+  await loadAll();
+});
+
+/* ---------- live ---------- */
+$$("[data-inj]").forEach(b => b.onclick = async () => {
+  $("#liveOut").innerHTML = `<div class="empty"><span class="spin"></span></div>`;
+  try{
+    const r = await post("/api/webhook/simulate",
+      {error_code: b.dataset.inj, amount_paise: Math.round((500 + Math.random()*4000))*100});
+    const c = r.case;
+    $("#liveOut").innerHTML = `
+      <div style="border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--panel-2)">
+        <div class="num" style="font-size:13px">${c.case_id} · ${money(c.amount_rupees)}</div>
+        <div class="note" style="margin:7px 0 12px">
+          Diagnosed <b style="color:var(--text)">${c.subcause.replace(/_/g," ")}</b>
+          at ${pct(c.confidence)} → ${stateTag(c.state)}</div>
+        <div class="stream">${r.audit.map(e =>
+          `<div class="ev"><div class="k ${e.event}">${e.event}</div>
+           <div class="m">${e.summary}</div></div>`).join("")}</div>
+      </div>`;
+    loadLive();
+  }catch(e){ $("#liveOut").innerHTML = `<div class="err">Injection failed: ${e.message}</div>`; }
+});
+
+async function loadLive(){
+  const d = await get("/api/webhook/live");
+  $("#liveCases").innerHTML = d.count ? `<table class="tbl"><tbody>${
+    d.cases.map(c => `<tr style="cursor:default"><td><span class="num"
+      style="font-size:11px">${c.case_id}</span><br>
+      <span class="mono-sm">${(c.subcause||"").replace(/_/g," ")}</span></td>
+      <td class="r">${money(c.amount_rupees)}</td>
+      <td>${stateTag(c.state)}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">Nothing yet.</div>`;
+}
+
+loadAll().catch(e => {
+  document.querySelector(".wrap").insertAdjacentHTML("afterbegin",
+    `<div class="banner" style="border-color:#5A3833"><b>Can't reach the API.</b>
+     Start it with <span class="tag">uvicorn app.main:app --reload</span> from the
+     backend folder, then reload this page.</div>`);
+});
+</script>
+</body>
+</html>
